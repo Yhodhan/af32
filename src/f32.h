@@ -6,6 +6,7 @@
 #include <memory>
 // this is not portable across different systems
 // as this is not intended to be use in the wild is okay
+enum FAT_TYPE { FAT12, FAT16, FAT32 };
 
 typedef struct __attribute__((packed)) {
   uint8_t bs_jmpBoot[3];
@@ -47,14 +48,17 @@ public:
 
   void debug_bpb();
   void parse_sector(std::ifstream &disk);
+  uint32_t cluster_to_sector(uint32_t N);
 
 private:
   std::unique_ptr<BPB> bpb;
   uint32_t first_data_sector;
-  
- // ----------------------------
- //         Exceptions
- // ----------------------------
+  uint32_t total_sectors;
+  FAT_TYPE type;
+
+  // ----------------------------
+  //         Exceptions
+  // ----------------------------
   class fileException : public std::exception {
   public:
     virtual const char *what() const throw();

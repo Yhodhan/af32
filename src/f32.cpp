@@ -74,20 +74,40 @@ F32::F32(const std::string &file) {
       bpb->bpb_BytesPerSec;
 
   // Compute start of data region
-  uint32_t FATSz;
-  if (bpb->bpb_FATSz16 != 0) {
-    FATSz = bpb->bpb_FATSz16;
-  } else {
-    FATSz = bpb->bpb_FATSz32;
-  }
+  uint32_t FATSz =
+      (bpb->bpb_FATSz16 != 0) ? bpb->bpb_FATSz16 : bpb->bpb_FATSz32;
+
+  this->total_sectors =
+      (bpb->bpb_TotSec16 != 0) ? bpb->bpb_TotSec16 : bpb->bpb_TotSec32;
 
   first_data_sector =
       bpb->bpb_RsvdSecCnt + (bpb->bpb_NumFats * FATSz) + root_dir_sector;
 
-  std::cout << "first data sector: " << first_data_sector << std::endl;
+  uint32_t data_sec = this->total_sectors -
+                      (bpb->bpb_RsvdSecCnt + (bpb->bpb_NumFats * FATSz)) +
+                      root_dir_sector;
+
+  // NOTE: This is actually not needed because it is designed to work with FAT32
+  // but is nice to have if planned to extend to FAT16 in future
+  uint32_t count_of_clusters = data_sec / bpb->bpb_SecPerClus;
+
+  if (count_of_clusters < 4085) {
+    this->type = FAT12;
+  } else if (count_of_clusters < 65525) {
+    this->type = FAT16;
+  } else {
+    this->type = FAT32;
+  }
 }
 
 F32::~F32() {}
+
+// ----------------------
+//     IO functions
+// ----------------------
+uint32_t F32::cluster_to_sector(uint32_t N) {
+  return ((N - 2) * bpb->bpb_SecPerClus) + first_data_sector;
+}
 
 // ----------------------
 //      Exceptions
