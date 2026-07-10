@@ -50,7 +50,11 @@ public:
 
 private:
   std::unique_ptr<BPB> bpb;
-
+  uint32_t first_data_sector;
+  
+ // ----------------------------
+ //         Exceptions
+ // ----------------------------
   class fileException : public std::exception {
   public:
     virtual const char *what() const throw();

@@ -1,4 +1,5 @@
 #include "f32.h"
+#include <cstdint>
 #include <memory>
 
 void F32::debug_bpb() {
@@ -66,8 +67,24 @@ F32::F32(const std::string &file) {
   }
 
   this->bpb = std::unique_ptr<BPB>(new BPB());
-
   parse_sector(disk);
+
+  uint32_t root_dir_sector =
+      ((this->bpb->bpb_RootEntCnt * 32) + (bpb->bpb_BytesPerSec - 1)) /
+      bpb->bpb_BytesPerSec;
+
+  // Compute start of data region
+  uint32_t FATSz;
+  if (bpb->bpb_FATSz16 != 0) {
+    FATSz = bpb->bpb_FATSz16;
+  } else {
+    FATSz = bpb->bpb_FATSz32;
+  }
+
+  first_data_sector =
+      bpb->bpb_RsvdSecCnt + (bpb->bpb_NumFats * FATSz) + root_dir_sector;
+
+  std::cout << "first data sector: " << first_data_sector << std::endl;
 }
 
 F32::~F32() {}
