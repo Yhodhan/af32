@@ -1,6 +1,6 @@
 #include "f32.h"
 #include <cstdint>
-#include <memory>
+#include <cstring>
 
 void F32::debug_bpb() {
 
@@ -26,7 +26,7 @@ void F32::debug_bpb() {
   printf("\n");
 }
 
-void F32::parse_sector(std::ifstream &disk) {
+void F32::parse_sector() {
   // extract the jump sector
   disk.read(reinterpret_cast<char *>(bpb->bs_jmpBoot), 3);
   disk.read(reinterpret_cast<char *>(bpb->bs_OEMName), 8);
@@ -58,16 +58,14 @@ void F32::parse_sector(std::ifstream &disk) {
   disk.read(reinterpret_cast<char *>(&bpb->bs_Sign), 2);
 }
 
-F32::F32(const std::string &file) {
-
-  std::ifstream disk(file, std::ios::binary);
+F32::F32(std::string &file) : disk(file, std::ios::binary) {
 
   if (!disk) {
     throw F32::fileException();
   }
 
   this->bpb = std::unique_ptr<BPB>(new BPB());
-  parse_sector(disk);
+  parse_sector();
 
   uint32_t root_dir_sector =
       ((this->bpb->bpb_RootEntCnt * 32) + (bpb->bpb_BytesPerSec - 1)) /
@@ -92,21 +90,38 @@ F32::F32(const std::string &file) {
   uint32_t count_of_clusters = data_sec / bpb->bpb_SecPerClus;
 
   if (count_of_clusters < 4085) {
-    this->type = FAT12;
+    this->fat_type = FAT12;
   } else if (count_of_clusters < 65525) {
-    this->type = FAT16;
+    this->fat_type = FAT16;
   } else {
-    this->type = FAT32;
+    this->fat_type = FAT32;
   }
 }
 
-F32::~F32() {}
+F32::~F32() { disk.close(); }
 
 // ----------------------
 //     IO functions
 // ----------------------
 uint32_t F32::cluster_to_sector(uint32_t N) {
   return ((N - 2) * bpb->bpb_SecPerClus) + first_data_sector;
+}
+
+uint32_t F32::get_fat_entry(uint32_t N) {
+  uint32_t FATOffset = (fat_type == FAT16) ? N * 2 : N * 4;
+
+  uint32_t fat_sec_num =
+      bpb->bpb_RsvdSecCnt + (FATOffset / bpb->bpb_BytesPerSec);
+
+  uint32_t fat_ent_offset = FATOffset % bpb->bpb_BytesPerSec;
+
+  std::vector<uint8_t> sec_buff(bpb->bpb_BytesPerSec);
+  disk.seekg(fat_sec_num * bpb->bpb_BytesPerSec);
+  disk.read(reinterpret_cast<char *>(sec_buff.data()), bpb->bpb_BytesPerSec);
+
+  uint32_t val;
+  std::memcpy(&val, &sec_buff[fat_ent_offset], 4);
+  return val & 0x0FFFFFFF;
 }
 
 // ----------------------

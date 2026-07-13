@@ -4,6 +4,8 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <vector>
+
 // this is not portable across different systems
 // as this is not intended to be use in the wild is okay
 enum FAT_TYPE { FAT12, FAT16, FAT32 };
@@ -41,20 +43,32 @@ typedef struct __attribute__((packed)) {
   uint16_t bs_Sign;
 } BPB;
 
+struct __attribute__((packed)) FSInfo {
+  uint32_t FSI_LeadSig = 0x41615252;
+  uint8_t FSI_Reserved1[480] = {};
+  uint32_t FSI_StrucSig = 0x61417272;
+  uint32_t FSI_Free_Count = 0xFFFFFFFF;
+  uint32_t FSI_Nxt_Free = 0xFFFFFFFF;
+  uint8_t FSI_Reserved2[12] = {};
+  uint32_t FSI_TrailSig = 0xAA550000;
+};
+
 class F32 {
 public:
-  F32(const std::string &file);
+  F32(std::string &file);
   ~F32();
 
   void debug_bpb();
-  void parse_sector(std::ifstream &disk);
+  void parse_sector();
   uint32_t cluster_to_sector(uint32_t N);
+  uint32_t get_fat_entry(uint32_t N);
 
 private:
+  std::ifstream disk;
   std::unique_ptr<BPB> bpb;
   uint32_t first_data_sector;
   uint32_t total_sectors;
-  FAT_TYPE type;
+  FAT_TYPE fat_type;
 
   // ----------------------------
   //         Exceptions
