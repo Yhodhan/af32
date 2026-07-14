@@ -83,7 +83,7 @@ public:
   ~F32();
 
   void debug_bpb();
-
+  void parse_sector();
   uint32_t get_fat_entry(uint32_t N);
   uint32_t cluster_to_sector(uint32_t N);
   std::vector<uint8_t> read_cluster(uint32_t cluster);
