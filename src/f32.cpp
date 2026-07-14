@@ -9,7 +9,7 @@ void F32::debug_bpb() {
   }
 
   for (unsigned int i = 0; i < 8; i++) {
-    printf("byte OEMName %d is: %x \n", i, bpb->bs_jmpBoot[i]);
+    printf("byte OEMName %d is: %x \n", i, bpb->bs_OEMName[i]);
   }
 
   printf("bytes per sec %d \n", bpb->bpb_BytesPerSec);
@@ -152,6 +152,30 @@ std::vector<uint8_t> F32::read_cluster(uint32_t cluster) {
 
   return bytes;
 }
+
+std::vector<DirEntry> F32::read_directory(uint32_t start_cluster) {
+  std::vector<uint32_t> chain = get_cluster_chain(start_cluster);
+  std::vector<uint8_t> data;
+
+  for (auto cluster : chain) {
+    auto bytes = read_cluster(cluster);
+    data.insert(data.end(), bytes.begin(), bytes.end());
+  }
+
+  size_t count = data.size() / sizeof(DirEntry);
+  std::vector<DirEntry> entries;
+  const DirEntry *raw = reinterpret_cast<const DirEntry *>(data.data());
+
+  for (size_t i = 0; i < count; i++) {
+    if (raw[i].DIR_Name[0] == 0x00) break;
+    if (raw[i].DIR_Name[0] == 0xE5) continue;
+    if (raw[i].DIR_Attr == 0x0F) continue;
+    entries.push_back(raw[i]);
+  }
+
+  return entries;
+}
+
 // ----------------------
 //      Exceptions
 // ----------------------

@@ -62,7 +62,7 @@ struct __attribute__((packed)) FSInfo {
   uint32_t FSI_TrailSig = 0xAA550000;
 };
 
-struct __attribute__((packed)) FatDir {
+struct __attribute__((packed)) DirEntry {
   uint8_t DIR_Name[11];
   uint8_t DIR_Attr;
   uint8_t DIR_NTRes;
@@ -83,11 +83,12 @@ public:
   ~F32();
 
   void debug_bpb();
-  void parse_sector();
+
   uint32_t get_fat_entry(uint32_t N);
   uint32_t cluster_to_sector(uint32_t N);
   std::vector<uint8_t> read_cluster(uint32_t cluster);
   std::vector<uint32_t> get_cluster_chain(uint32_t start_cluster);
+  std::vector<DirEntry> read_directory(uint32_t start_cluster);
 
 private:
   std::ifstream disk;
