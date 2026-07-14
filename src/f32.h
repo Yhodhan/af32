@@ -10,7 +10,16 @@
 // as this is not intended to be use in the wild is okay
 enum FAT_TYPE { FAT12, FAT16, FAT32 };
 
-typedef struct __attribute__((packed)) {
+enum DIR_ATTR {
+  ATTR_READ_ONLY = 0x01,
+  ATTR_HIDDEN = 0x02,
+  ATTR_SYSTEM = 0x04,
+  ATTR_VOLUME_ID = 0x08,
+  ATTR_ARCHIVE = 0x20,
+  ATTR_LONG_NAME = ATTR_READ_ONLY | ATTR_HIDDEN | ATTR_SYSTEM | ATTR_VOLUME_ID
+};
+
+struct __attribute__((packed)) BPB {
   uint8_t bs_jmpBoot[3];
   uint8_t bs_OEMName[8];
   uint16_t bpb_BytesPerSec;
@@ -41,7 +50,7 @@ typedef struct __attribute__((packed)) {
   uint8_t bs_FilSysType[8];
   uint8_t bs_BootCode32[420];
   uint16_t bs_Sign;
-} BPB;
+};
 
 struct __attribute__((packed)) FSInfo {
   uint32_t FSI_LeadSig = 0x41615252;
@@ -53,6 +62,21 @@ struct __attribute__((packed)) FSInfo {
   uint32_t FSI_TrailSig = 0xAA550000;
 };
 
+struct __attribute__((packed)) FatDir {
+  uint8_t DIR_Name[11];
+  uint8_t DIR_Attr;
+  uint8_t DIR_NTRes;
+  uint8_t DIR_CrtTimeTenth;
+  uint16_t DIR_CrtTime;
+  uint16_t DIR_CrtDate;
+  uint16_t DIR_LstAccDate;
+  uint16_t DIR_FstClusHI;
+  uint16_t DIR_WrtTime;
+  uint16_t DIR_WritDate;
+  uint16_t DIR_FstClusLO;
+  uint32_t DIR_FileSize;
+};
+
 class F32 {
 public:
   F32(std::string &file);
@@ -60,15 +84,22 @@ public:
 
   void debug_bpb();
   void parse_sector();
-  uint32_t cluster_to_sector(uint32_t N);
   uint32_t get_fat_entry(uint32_t N);
+  uint32_t cluster_to_sector(uint32_t N);
+  std::vector<uint8_t> read_cluster(uint32_t cluster);
+  std::vector<uint32_t> get_cluster_chain(uint32_t start_cluster);
 
 private:
   std::ifstream disk;
   std::unique_ptr<BPB> bpb;
-  uint32_t first_data_sector;
-  uint32_t total_sectors;
+
+  uint32_t FATSz;
+  uint32_t data_sec;
   FAT_TYPE fat_type;
+  uint32_t total_sectors;
+  uint32_t first_fat_sector;
+  uint32_t first_data_sector;
+  uint32_t count_of_clusters;
 
   // ----------------------------
   //         Exceptions

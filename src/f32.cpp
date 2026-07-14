@@ -71,23 +71,25 @@ F32::F32(std::string &file) : disk(file, std::ios::binary) {
       ((this->bpb->bpb_RootEntCnt * 32) + (bpb->bpb_BytesPerSec - 1)) /
       bpb->bpb_BytesPerSec;
 
-  // Compute start of data region
-  uint32_t FATSz =
-      (bpb->bpb_FATSz16 != 0) ? bpb->bpb_FATSz16 : bpb->bpb_FATSz32;
+  // Compute main sectors
+
+  this->first_fat_sector = bpb->bpb_RsvdSecCnt;
+
+  this->FATSz = (bpb->bpb_FATSz16 != 0) ? bpb->bpb_FATSz16 : bpb->bpb_FATSz32;
 
   this->total_sectors =
       (bpb->bpb_TotSec16 != 0) ? bpb->bpb_TotSec16 : bpb->bpb_TotSec32;
 
-  first_data_sector =
+  this->first_data_sector =
       bpb->bpb_RsvdSecCnt + (bpb->bpb_NumFats * FATSz) + root_dir_sector;
 
-  uint32_t data_sec = this->total_sectors -
-                      (bpb->bpb_RsvdSecCnt + (bpb->bpb_NumFats * FATSz)) +
-                      root_dir_sector;
+  this->data_sec = this->total_sectors -
+                   (bpb->bpb_RsvdSecCnt + (bpb->bpb_NumFats * FATSz)) +
+                   root_dir_sector;
 
   // NOTE: This is actually not needed because it is designed to work with FAT32
   // but is nice to have if planned to extend to FAT16 in future
-  uint32_t count_of_clusters = data_sec / bpb->bpb_SecPerClus;
+  this->count_of_clusters = data_sec / bpb->bpb_SecPerClus;
 
   if (count_of_clusters < 4085) {
     this->fat_type = FAT12;
@@ -103,12 +105,14 @@ F32::~F32() { disk.close(); }
 // ----------------------
 //     IO functions
 // ----------------------
-uint32_t F32::cluster_to_sector(uint32_t N) {
-  return ((N - 2) * bpb->bpb_SecPerClus) + first_data_sector;
+uint32_t F32::cluster_to_sector(uint32_t n) {
+  return ((n - 2) * bpb->bpb_SecPerClus) + first_data_sector;
 }
 
-uint32_t F32::get_fat_entry(uint32_t N) {
-  uint32_t FATOffset = (fat_type == FAT16) ? N * 2 : N * 4;
+// This function is reading from the FAT table (the array of indexes).
+// The input is the index of the cluster we want to read.
+uint32_t F32::get_fat_entry(uint32_t cluster) {
+  uint32_t FATOffset = (fat_type == FAT16) ? cluster * 2 : cluster * 4;
 
   uint32_t fat_sec_num =
       bpb->bpb_RsvdSecCnt + (FATOffset / bpb->bpb_BytesPerSec);
@@ -124,6 +128,30 @@ uint32_t F32::get_fat_entry(uint32_t N) {
   return val & 0x0FFFFFFF;
 }
 
+// This function brings all the chains of the cluster from the FAT table
+std::vector<uint32_t> F32::get_cluster_chain(uint32_t start_cluster) {
+  std::vector<uint32_t> chain;
+  uint32_t cluster = start_cluster;
+
+  while (cluster < 0x0FFFFFF8 and cluster != 0x0FFFFFF7) {
+    chain.push_back(cluster);
+    cluster = get_fat_entry(cluster);
+  }
+
+  return chain;
+}
+
+// This function reads from the real disk
+std::vector<uint8_t> F32::read_cluster(uint32_t cluster) {
+  uint32_t sector = cluster_to_sector(cluster);
+  uint data_size = bpb->bpb_BytesPerSec * bpb->bpb_SecPerClus;
+  std::vector<uint8_t> bytes(data_size);
+
+  disk.seekg(sector * bpb->bpb_BytesPerSec);
+  disk.read(reinterpret_cast<char *>(bytes.data()), data_size);
+
+  return bytes;
+}
 // ----------------------
 //      Exceptions
 // ----------------------
