@@ -1,4 +1,5 @@
 #include "f32.h"
+#include <cctype>
 #include <cstdint>
 #include <cstring>
 
@@ -109,8 +110,10 @@ uint32_t F32::cluster_to_sector(uint32_t n) {
   return ((n - 2) * bpb->bpb_SecPerClus) + first_data_sector;
 }
 
+// ---------------------------------------------------------------------------
 // This function is reading from the FAT table (the array of indexes).
 // The input is the index of the cluster we want to read.
+// ---------------------------------------------------------------------------
 uint32_t F32::get_fat_entry(uint32_t cluster) {
   uint32_t FATOffset = (fat_type == FAT16) ? cluster * 2 : cluster * 4;
 
@@ -128,7 +131,9 @@ uint32_t F32::get_fat_entry(uint32_t cluster) {
   return val & 0x0FFFFFFF;
 }
 
+// ---------------------------------------------------------------------------
 // This function brings all the chains of the cluster from the FAT table
+// ---------------------------------------------------------------------------
 std::vector<uint32_t> F32::get_cluster_chain(uint32_t start_cluster) {
   std::vector<uint32_t> chain;
   uint32_t cluster = start_cluster;
@@ -141,7 +146,11 @@ std::vector<uint32_t> F32::get_cluster_chain(uint32_t start_cluster) {
   return chain;
 }
 
+// ---------------------------------------------------------------------------
 // This function reads from the real disk
+// given a cluster number it calculates its offset and then read it from disk
+// returns the raw bytes from the disk
+// ---------------------------------------------------------------------------
 std::vector<uint8_t> F32::read_cluster(uint32_t cluster) {
   uint32_t sector = cluster_to_sector(cluster);
   uint data_size = bpb->bpb_BytesPerSec * bpb->bpb_SecPerClus;
@@ -153,6 +162,13 @@ std::vector<uint8_t> F32::read_cluster(uint32_t cluster) {
   return bytes;
 }
 
+// ---------------------------------------------------------------------------
+// This function fetches all the clusters chain associated to a directory
+// then reads from the disk those chunks of data
+// it reiterpretates those raw bytes as an array of directory entries
+// then read each directory entry to see their attr and stores in the return
+// value the associeated entries
+// ---------------------------------------------------------------------------
 std::vector<DirEntry> F32::read_directory(uint32_t start_cluster) {
   std::vector<uint32_t> chain = get_cluster_chain(start_cluster);
   std::vector<uint8_t> data;
@@ -167,13 +183,86 @@ std::vector<DirEntry> F32::read_directory(uint32_t start_cluster) {
   const DirEntry *raw = reinterpret_cast<const DirEntry *>(data.data());
 
   for (size_t i = 0; i < count; i++) {
-    if (raw[i].DIR_Name[0] == 0x00) break;
-    if (raw[i].DIR_Name[0] == 0xE5) continue;
-    if (raw[i].DIR_Attr == 0x0F) continue;
+    if (raw[i].DIR_Name[0] == 0x00)
+      break;
+    if (raw[i].DIR_Name[0] == 0xE5)
+      continue;
+    if (raw[i].DIR_Attr == 0x0F)
+      continue;
     entries.push_back(raw[i]);
   }
 
   return entries;
+}
+
+std::vector<std::string> split_path(const std::string path) {
+  std::vector<std::string> result;
+  std::string del = "/";
+  size_t start = 0, pos;
+
+  while ((pos = path.find(del)) != std::string::npos) {
+    if (pos > start)
+      result.push_back(path.substr(start, pos - start));
+    start = pos + 1;
+  }
+
+  if (start < path.size())
+    result.push_back(path.substr(start));
+
+  return result;
+}
+
+std::string to_short_name(const std::string &file) {
+  std::string result(11, ' ');
+
+  std::string name = file;
+  std::string ext;
+
+  size_t dot = file.find('.');
+
+  if (dot != std::string::npos) {
+    name = file.substr(0, dot);
+    ext = file.substr(dot + 1);
+  }
+
+  for (size_t i = 0; i < name.size() && i < 8; i++) {
+    result[i] = std::toupper(static_cast<unsigned char>(name[i]));
+  }
+
+  for (size_t i = 0; i < ext.size() && i < 3; i++) {
+    result[8 + i] = std::toupper(static_cast<unsigned char>(ext[i]));
+  }
+
+  return result;
+}
+
+bool F32::find_entry(const std::string &path, DirEntry &out) {
+  auto parts = split_path(path);
+  uint32_t current_cluster = this->bpb->bpb_RootClus;
+
+  for (size_t i = 0; i < parts.size(); i++) {
+    auto entries = read_directory(current_cluster);
+
+    bool found = false;
+    auto wanted = to_short_name(parts[i]);
+
+    for (const auto &entry : entries) {
+      std::string name(reinterpret_cast<const char *>(entry.DIR_Name), 11);
+      if (name == wanted) {
+        if (i == parts.size() - 1) {out = entry; return true;}
+        if (!(entry.DIR_Attr & 0x10)) return false; // expected directory, got a file
+        
+        current_cluster = (entry.DIR_FstClusHI << 16) | entry.DIR_FstClusLO;
+        found = true;
+        break;
+      }
+    }
+
+    if (!found)
+      return false;
+  }
+
+  return false;
 }
 
 // ----------------------

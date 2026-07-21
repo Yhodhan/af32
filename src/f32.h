@@ -87,8 +87,9 @@ public:
   uint32_t get_fat_entry(uint32_t N);
   uint32_t cluster_to_sector(uint32_t N);
   std::vector<uint8_t> read_cluster(uint32_t cluster);
-  std::vector<uint32_t> get_cluster_chain(uint32_t start_cluster);
+  bool find_entry(const std::string &path, DirEntry &out);
   std::vector<DirEntry> read_directory(uint32_t start_cluster);
+  std::vector<uint32_t> get_cluster_chain(uint32_t start_cluster);
 
 private:
   std::ifstream disk;
